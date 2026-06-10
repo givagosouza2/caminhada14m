@@ -122,7 +122,7 @@ if uploaded_file is not None:
         )
         
         # -----------------------------------------------------------------------------
-        # 4.0.1 Duração da Janela de Análise (NOVO)
+        # 4.0.1 Duração da Janela de Análise
         # -----------------------------------------------------------------------------
         window_duration = time_window[1] - time_window[0]
         st.info(f"⏱️ **Duração do intervalo de análise:** {window_duration:.2f} segundos")
@@ -281,6 +281,69 @@ if uploaded_file is not None:
         )
 
         st.plotly_chart(fig_window, use_container_width=True)
+
+        # -----------------------------------------------------------------------------
+        # 6.2 NOVO: Gráfico apenas do Sinal Filtrado
+        # -----------------------------------------------------------------------------
+        st.markdown("#### 📉 Sinal Filtrado (Passa-Baixa 0.5 Hz)")
+        st.markdown("Visualização isolada da componente de baixa frequência da norma da aceleração.")
+        
+        fig_filtered = px.line(
+            df_window,
+            x='Tempo (s)',
+            y='Norma Filtrada (0.5 Hz)',
+            title=f'Norma Filtrada (0.5 Hz) - Janela ({time_window[0]:.2f}s - {time_window[1]:.2f}s)',
+            labels={'Norma Filtrada (0.5 Hz)': 'Aceleração Filtrada (m/s²)'},
+            height=350
+        )
+        
+        # Personalizar a linha do sinal filtrado
+        fig_filtered.update_traces(
+            line=dict(color='#E377C2', width=3)  # Cor roxa/rosa mais grossa
+        )
+        
+        # Adicionar marcadores nos picos detectados (para referência)
+        if num_peaks > 0:
+            peak_times_filtered = df_window['Tempo (s)'].iloc[peaks].values
+            # Interpolar valores do sinal filtrado nos tempos dos picos
+            peak_values_filtered = df_window['Norma Filtrada (0.5 Hz)'].iloc[peaks].values
+            
+            fig_filtered.add_trace(
+                px.scatter(
+                    x=peak_times_filtered,
+                    y=peak_values_filtered,
+                    labels={'x': 'Tempo (s)', 'y': 'Aceleração Filtrada (m/s²)'}
+                ).data[0]
+            )
+            
+            fig_filtered.data[-1].update(
+                mode='markers',
+                marker=dict(color='green', size=12, symbol='star', line=dict(width=2, color='black')),
+                name='Picos Detectados',
+                showlegend=True
+            )
+        
+        # Adicionar linha horizontal na média do sinal filtrado
+        mean_filtered = df_window['Norma Filtrada (0.5 Hz)'].mean()
+        fig_filtered.add_hline(
+            y=mean_filtered,
+            line_dash="dot",
+            line_color="blue",
+            annotation_text=f"Média: {mean_filtered:.3f} m/s²",
+            annotation_position="top right"
+        )
+        
+        fig_filtered.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        st.plotly_chart(fig_filtered, use_container_width=True)
 
         # =========================================================================
         # 7. ANÁLISE APROFUNDADA BASEADA NOS PICOS
