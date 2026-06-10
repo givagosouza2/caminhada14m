@@ -204,7 +204,7 @@ if uploaded_file is not None:
             )
         )
 
-        col1,col2,col3 = st.columns(3)
+        col1,col2,col3 = st.columns([0.2,1,0.2])
         with col2:
             st.plotly_chart(fig_window, use_container_width=True)
 
