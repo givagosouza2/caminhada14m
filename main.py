@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 from scipy import signal
 from scipy.interpolate import interp1d
+from scipy.stats import linregress
 import plotly.express as px
+import plotly.graph_objects as go
 
 # -----------------------------------------------------------------------------
 # Configuração da Página Streamlit
@@ -60,7 +62,7 @@ if uploaded_file is not None:
         # -----------------------------------------------------------------------------
         # 2. Interpolação para 100 Hz
         # -----------------------------------------------------------------------------
-        fs_target = 100.0  # Frequência de amostragem alvo em Hz
+        fs_target = 100.0
         dt = 1.0 / fs_target
         
         t_min, t_max = t.min(), t.max()
@@ -123,12 +125,10 @@ if uploaded_file is not None:
         # 4.1 Parâmetros para Detecção de Picos
         # -----------------------------------------------------------------------------
         st.markdown("#### 🔍 Parâmetros de Detecção de Picos")
-        st.markdown("Ajuste os parâmetros abaixo para identificar picos significativos na norma da aceleração.")
         
         col_p1, col_p2, col_p3 = st.columns(3)
         
         with col_p1:
-            # Altura mínima do pico (em m/s²)
             min_height = st.number_input(
                 "Altura Mínima (m/s²)",
                 min_value=0.0,
@@ -139,7 +139,6 @@ if uploaded_file is not None:
             )
         
         with col_p2:
-            # Distância mínima entre picos (em segundos)
             min_distance_sec = st.number_input(
                 "Distância Mínima entre Picos (s)",
                 min_value=0.01,
@@ -151,7 +150,6 @@ if uploaded_file is not None:
             min_distance_samples = int(min_distance_sec * fs_target)
         
         with col_p3:
-            # Proeminência mínima (quanto o pico se sobressai em relação aos vales ao redor)
             min_prominence = st.number_input(
                 "Proeminência Mínima (m/s²)",
                 min_value=0.0,
@@ -198,7 +196,6 @@ if uploaded_file is not None:
         # -----------------------------------------------------------------------------
         # 6.1 Detecção de Picos na Janela Selecionada
         # -----------------------------------------------------------------------------
-        # Detectar picos na norma original (não filtrada) dentro da janela
         norm_window = df_window['Norma'].values
         peaks, properties = signal.find_peaks(
             norm_window,
@@ -209,8 +206,8 @@ if uploaded_file is not None:
         
         num_peaks = len(peaks)
 
-        # Métricas da janela selecionada
-        st.markdown("#### 📊 Métricas da Janela Selecionada")
+        # Métricas básicas da janela
+        st.markdown("#### 📊 Métricas Básicas da Janela")
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric("Média da Norma", f"{df_window['Norma'].mean():.4f}")
@@ -223,7 +220,7 @@ if uploaded_file is not None:
         with col5:
             st.metric("🎯 Número de Picos", f"{num_peaks}")
 
-        # Plotagem da janela com zoom - norma original, filtrada e picos marcados
+        # Plotagem da janela com zoom
         fig_window = px.line(
             df_window, 
             x='Tempo (s)', 
@@ -247,7 +244,7 @@ if uploaded_file is not None:
             line=dict(color='red', width=2.5),
         )
         
-        # Adicionar marcadores nos picos detectados
+        # Adicionar marcadores nos picos
         if num_peaks > 0:
             peak_times = df_window['Tempo (s)'].iloc[peaks].values
             peak_values = norm_window[peaks]
@@ -276,26 +273,281 @@ if uploaded_file is not None:
                 x=1
             )
         )
-        col1, col2, col3 = st.columns([0.5,1,0.5])
-        with col2:
-            st.plotly_chart(fig_window, use_container_width=True)
 
-        # -----------------------------------------------------------------------------
-        # 6.2 Tabela de Picos Detectados
-        # -----------------------------------------------------------------------------
-        if num_peaks > 0:
-            with st.expander(f"📋 Ver Detalhes dos {num_peaks} Picos Detectados"):
-                peak_df = pd.DataFrame({
-                    'Índice': peaks,
-                    'Tempo (s)': df_window['Tempo (s)'].iloc[peaks].values,
-                    'Amplitude (m/s²)': norm_window[peaks],
-                    'Proeminência': properties['prominences'] if 'prominences' in properties else [None] * num_peaks
-                })
-                st.dataframe(peak_df, use_container_width=True)
+        st.plotly_chart(fig_window, use_container_width=True)
 
-        # Opcional: Mostrar a tabela de dados processados da janela selecionada
-        with st.expander("Visualizar Tabela de Dados Processados (Janela Selecionada)"):
-            st.dataframe(df_window, use_container_width=True)
+        # =========================================================================
+        # 7. ANÁLISE APROFUNDADA BASEADA NOS PICOS
+        # =========================================================================
+        if num_peaks >= 2:
+            st.markdown("---")
+            st.header("🔬 Análise Aprofundada dos Picos")
+            
+            # ---------------------------------------------------------------------
+            # 7.1 Extração de Características dos Picos
+            # ---------------------------------------------------------------------
+            peak_times = df_window['Tempo (s)'].iloc[peaks].values
+            peak_amplitudes = norm_window[peaks]
+            peak_prominences = properties['prominences'] if 'prominences' in properties else None
+            
+            # Calcular intervalos entre picos consecutivos
+            peak_intervals = np.diff(peak_times)
+            
+            # Calcular largura dos picos (se disponível)
+            peak_widths = None
+            if 'widths' in properties:
+                peak_widths = properties['widths'] / fs_target  # Converter para segundos
+            
+            # Criar DataFrame com características dos picos
+            peaks_df = pd.DataFrame({
+                'Pico #': range(1, num_peaks + 1),
+                'Tempo (s)': peak_times,
+                'Amplitude (m/s²)': peak_amplitudes,
+                'Intervalo até próximo (s)': np.append(peak_intervals, np.nan),
+            })
+            
+            if peak_prominences is not None:
+                peaks_df['Proeminência (m/s²)'] = peak_prominences
+            
+            if peak_widths is not None:
+                peaks_df['Largura (s)'] = peak_widths
+            
+            # ---------------------------------------------------------------------
+            # 7.2 Estatísticas Descritivas
+            # ---------------------------------------------------------------------
+            st.subheader("📈 Estatísticas dos Picos")
+            
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+            
+            with col_s1:
+                st.markdown("**Intervalos entre Picos**")
+                st.metric("Média", f"{np.mean(peak_intervals):.3f} s")
+                st.metric("Desvio Padrão", f"{np.std(peak_intervals):.3f} s")
+                st.metric("CV", f"{(np.std(peak_intervals) / np.mean(peak_intervals) * 100):.1f}%")
+            
+            with col_s2:
+                st.markdown("**Amplitudes dos Picos**")
+                st.metric("Média", f"{np.mean(peak_amplitudes):.3f} m/s²")
+                st.metric("Desvio Padrão", f"{np.std(peak_amplitudes):.3f} m/s²")
+                st.metric("CV", f"{(np.std(peak_amplitudes) / np.mean(peak_amplitudes) * 100):.1f}%")
+            
+            with col_s3:
+                st.markdown("**Frequência de Picos**")
+                freq_mean = 1.0 / np.mean(peak_intervals)
+                st.metric("Frequência Média", f"{freq_mean:.2f} Hz")
+                st.metric("Período Médio", f"{np.mean(peak_intervals):.3f} s")
+                st.metric("Total", f"{num_peaks} picos")
+            
+            with col_s4:
+                st.markdown("**Duração da Janela**")
+                window_duration = time_window[1] - time_window[0]
+                st.metric("Duração", f"{window_duration:.2f} s")
+                st.metric("Taxa de Picos", f"{num_peaks / window_duration:.2f} picos/s")
+                if peak_prominences is not None:
+                    st.metric("Proeminência Média", f"{np.mean(peak_prominences):.3f} m/s²")
+            
+            # ---------------------------------------------------------------------
+            # 7.3 Análise de Regularidade
+            # ---------------------------------------------------------------------
+            st.subheader("⏱️ Análise de Regularidade")
+            
+            cv_intervals = np.std(peak_intervals) / np.mean(peak_intervals) * 100
+            
+            col_r1, col_r2, col_r3 = st.columns(3)
+            
+            with col_r1:
+                st.metric("Coeficiente de Variação (Intervalos)", f"{cv_intervals:.2f}%")
+                if cv_intervals < 5:
+                    st.success("✅ Alta regularidade (CV < 5%)")
+                elif cv_intervals < 15:
+                    st.info("ℹ️ Regularidade moderada (CV 5-15%)")
+                else:
+                    st.warning("⚠️ Baixa regularidade (CV > 15%)")
+            
+            with col_r2:
+                st.metric("Intervalo Mínimo", f"{np.min(peak_intervals):.3f} s")
+                st.metric("Intervalo Máximo", f"{np.max(peak_intervals):.3f} s")
+                st.metric("Amplitude", f"{np.max(peak_intervals) - np.min(peak_intervals):.3f} s")
+            
+            with col_r3:
+                st.metric("Mediana", f"{np.median(peak_intervals):.3f} s")
+                st.metric("Q1 (25%)", f"{np.percentile(peak_intervals, 25):.3f} s")
+                st.metric("Q3 (75%)", f"{np.percentile(peak_intervals, 75):.3f} s")
+            
+            # ---------------------------------------------------------------------
+            # 7.4 Análise de Tendência Temporal
+            # ---------------------------------------------------------------------
+            st.subheader("📉 Análise de Tendência Temporal")
+            st.markdown("Verifica se há mudança sistemática nas características ao longo do tempo (possível fadiga ou adaptação).")
+            
+            # Regressão linear para intervalos
+            x_reg = np.arange(len(peak_intervals))
+            slope_intervals, intercept_intervals, r_intervals, p_intervals, std_err_intervals = linregress(x_reg, peak_intervals)
+            
+            # Regressão linear para amplitudes
+            x_reg_amp = np.arange(len(peak_amplitudes))
+            slope_amps, intercept_amps, r_amps, p_amps, std_err_amps = linregress(x_reg_amp, peak_amplitudes)
+            
+            col_t1, col_t2 = st.columns(2)
+            
+            with col_t1:
+                st.markdown("**Tendência dos Intervalos**")
+                st.metric("Inclinação (slope)", f"{slope_intervals:.5f} s/pico")
+                st.metric("R²", f"{r_intervals**2:.3f}")
+                st.metric("Valor-p", f"{p_intervals:.4f}")
+                
+                if p_intervals < 0.05:
+                    if slope_intervals > 0:
+                        st.warning("⚠️ Intervalos estão **aumentando** ao longo do tempo (possível fadiga)")
+                    else:
+                        st.warning("⚠️ Intervalos estão **diminuindo** ao longo do tempo (aceleração)")
+                else:
+                    st.success("✅ Sem tendência significativa (p ≥ 0.05)")
+            
+            with col_t2:
+                st.markdown("**Tendência das Amplitudes**")
+                st.metric("Inclinação (slope)", f"{slope_amps:.5f} m/s²/pico")
+                st.metric("R²", f"{r_amps**2:.3f}")
+                st.metric("Valor-p", f"{p_amps:.4f}")
+                
+                if p_amps < 0.05:
+                    if slope_amps > 0:
+                        st.info("📈 Amplitudes estão **aumentando** ao longo do tempo")
+                    else:
+                        st.info("📉 Amplitudes estão **diminuindo** ao longo do tempo")
+                else:
+                    st.success("✅ Sem tendência significativa (p ≥ 0.05)")
+            
+            # ---------------------------------------------------------------------
+            # 7.5 Visualizações
+            # ---------------------------------------------------------------------
+            st.subheader("📊 Visualizações")
+            
+            tab1, tab2, tab3, tab4 = st.tabs(["Distribuição de Intervalos", "Distribuição de Amplitudes", "Tendência Temporal", "Comparação"])
+            
+            with tab1:
+                fig_hist_int = px.histogram(
+                    x=peak_intervals,
+                    nbins=20,
+                    title='Distribuição dos Intervalos entre Picos',
+                    labels={'x': 'Intervalo (s)', 'y': 'Contagem'},
+                    color_discrete_sequence=['#636EFA']
+                )
+                fig_hist_int.add_vline(x=np.mean(peak_intervals), line_dash="dash", line_color="red",
+                                      annotation_text=f"Média: {np.mean(peak_intervals):.3f}s")
+                st.plotly_chart(fig_hist_int, use_container_width=True)
+            
+            with tab2:
+                fig_hist_amp = px.histogram(
+                    x=peak_amplitudes,
+                    nbins=20,
+                    title='Distribuição das Amplitudes dos Picos',
+                    labels={'x': 'Amplitude (m/s²)', 'y': 'Contagem'},
+                    color_discrete_sequence=['#EF553B']
+                )
+                fig_hist_amp.add_vline(x=np.mean(peak_amplitudes), line_dash="dash", line_color="blue",
+                                      annotation_text=f"Média: {np.mean(peak_amplitudes):.3f} m/s²")
+                st.plotly_chart(fig_hist_amp, use_container_width=True)
+            
+            with tab3:
+                # Gráfico de tendência temporal
+                fig_trend = go.Figure()
+                
+                # Intervalos
+                fig_trend.add_trace(go.Scatter(
+                    x=np.arange(len(peak_intervals)),
+                    y=peak_intervals,
+                    mode='lines+markers',
+                    name='Intervalos (s)',
+                    line=dict(color='blue', width=2),
+                    marker=dict(size=8)
+                ))
+                
+                # Linha de tendência
+                y_trend_int = slope_intervals * x_reg + intercept_intervals
+                fig_trend.add_trace(go.Scatter(
+                    x=x_reg,
+                    y=y_trend_int,
+                    mode='lines',
+                    name='Tendência Linear',
+                    line=dict(color='red', dash='dash', width=2)
+                ))
+                
+                fig_trend.update_layout(
+                    title='Evolução Temporal dos Intervalos entre Picos',
+                    xaxis_title='Número do Pico',
+                    yaxis_title='Intervalo (s)',
+                    height=400
+                )
+                st.plotly_chart(fig_trend, use_container_width=True)
+            
+            with tab4:
+                # Box plot comparativo
+                fig_box = go.Figure()
+                
+                fig_box.add_trace(go.Box(y=peak_intervals, name='Intervalos (s)', boxmean=True))
+                fig_box.add_trace(go.Box(y=peak_amplitudes, name='Amplitudes (m/s²)', boxmean=True))
+                
+                fig_box.update_layout(
+                    title='Distribuição dos Parâmetros dos Picos',
+                    height=400
+                )
+                st.plotly_chart(fig_box, use_container_width=True)
+            
+            # ---------------------------------------------------------------------
+            # 7.6 Tabela Detalhada
+            # ---------------------------------------------------------------------
+            with st.expander(f"📋 Ver Tabela Completa dos {num_peaks} Picos"):
+                st.dataframe(peaks_df, use_container_width=True, height=400)
+                
+                # Download da tabela
+                csv = peaks_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Baixar Tabela (CSV)",
+                    data=csv,
+                    file_name="analise_picos.csv",
+                    mime="text/csv"
+                )
+            
+            # ---------------------------------------------------------------------
+            # 7.7 Resumo Executivo
+            # ---------------------------------------------------------------------
+            st.subheader("📝 Resumo Executivo")
+            
+            summary = f"""
+            **Análise de {num_peaks} picos detectados em {window_duration:.2f} segundos:**
+            
+            - **Frequência média**: {freq_mean:.2f} Hz ({np.mean(peak_intervals):.3f}s entre picos)
+            - **Regularidade**: {cv_intervals:.1f}% de variação nos intervalos
+            - **Amplitude média**: {np.mean(peak_amplitudes):.3f} m/s²
+            - **Tendência temporal**: {"Detectada" if p_intervals < 0.05 or p_amps < 0.05 else "Não detectada"}
+            
+            **Interpretação:**
+            """
+            
+            if cv_intervals < 5:
+                summary += "\n- ✅ Movimento altamente regular e rítmico"
+            elif cv_intervals < 15:
+                summary += "\n- ℹ️ Movimento com regularidade moderada"
+            else:
+                summary += "\n- ⚠️ Movimento irregular ou variável"
+            
+            if p_intervals < 0.05 and slope_intervals > 0:
+                summary += "\n- ⚠️ Possível fadiga (intervalos aumentam ao longo do tempo)"
+            elif p_intervals < 0.05 and slope_intervals < 0:
+                summary += "\n- 📈 Aceleração do movimento ao longo do tempo"
+            
+            if p_amps < 0.05 and slope_amps < 0:
+                summary += "\n- 📉 Redução na intensidade do movimento (possível fadiga)"
+            elif p_amps < 0.05 and slope_amps > 0:
+                summary += "\n- 📈 Aumento na intensidade do movimento"
+            
+            st.info(summary)
+            
+        elif num_peaks == 1:
+            st.warning("⚠️ Apenas um pico foi detectado. São necessários pelo menos 2 picos para análise de intervalos.")
+        else:
+            st.warning("⚠️ Nenhum pico foi detectado com os parâmetros atuais. Ajuste os parâmetros de detecção.")
 
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
