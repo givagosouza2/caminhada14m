@@ -94,21 +94,7 @@ if uploaded_file is not None:
         })
 
         # -----------------------------------------------------------------------------
-        # 4. Plotagem dos Dados Completos
-        # -----------------------------------------------------------------------------
-        st.subheader("Dados Processados Completos")
-        fig_full = px.line(
-            df_processed, 
-            x='Tempo (s)', 
-            y='Norma', 
-            title='Norma da Aceleração (Destendida e Interpolada para 100 Hz)',
-            labels={'Norma': 'Norma da Aceleração (m/s²)'},
-            height=400
-        )
-        st.plotly_chart(fig_full, use_container_width=True)
-
-        # -----------------------------------------------------------------------------
-        # 5. Seleção de Janela de Tempo e Análise Adicional
+        # 4. Seleção de Janela de Tempo (Movido para antes do gráfico completo)
         # -----------------------------------------------------------------------------
         st.subheader("Análise por Janela de Tempo")
         st.markdown("Use o controle deslizante abaixo para selecionar uma janela de tempo específica para análise detalhada.")
@@ -128,6 +114,44 @@ if uploaded_file is not None:
             format="%.2f"
         )
 
+        # -----------------------------------------------------------------------------
+        # 5. Plotagem dos Dados Completos com a Janela Destacada
+        # -----------------------------------------------------------------------------
+        st.subheader("Dados Processados Completos")
+        fig_full = px.line(
+            df_processed, 
+            x='Tempo (s)', 
+            y='Norma', 
+            title='Norma da Aceleração (Destendida e Interpolada para 100 Hz)',
+            labels={'Norma': 'Norma da Aceleração (m/s²)'},
+            height=400
+        )
+        
+        # --- NOVO: Adicionar representação visual da janela no gráfico completo ---
+        
+        # Adiciona um retângulo semi-transparente cobrindo a janela selecionada
+        fig_full.add_vrect(
+            x0=time_window[0], 
+            x1=time_window[1], 
+            fillcolor="LightSalmon", 
+            opacity=0.3, 
+            layer="below", 
+            line_width=0,
+            annotation_text="Janela de Análise",
+            annotation_position="top left"
+        )
+        
+        # Adiciona linhas verticais tracejadas nas bordas para maior clareza
+        fig_full.add_vline(x=time_window[0], line_dash="dash", line_color="red")
+        fig_full.add_vline(x=time_window[1], line_dash="dash", line_color="red")
+        
+        # --------------------------------------------------------------------------
+
+        st.plotly_chart(fig_full, use_container_width=True)
+
+        # -----------------------------------------------------------------------------
+        # 6. Análise Detalhada da Janela
+        # -----------------------------------------------------------------------------
         # Filtrar dados com base na janela selecionada
         mask = (df_processed['Tempo (s)'] >= time_window[0]) & (df_processed['Tempo (s)'] <= time_window[1])
         df_window = df_processed[mask]
