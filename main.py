@@ -84,7 +84,7 @@ if uploaded_file is not None:
         # -----------------------------------------------------------------------------
         # 3.1 Filtro Passa-Baixa de 0.5 Hz na Norma
         # -----------------------------------------------------------------------------
-        cutoff_freq = 0.5
+        cutoff_freq = 1.5
         nyquist = fs_target / 2.0
         normal_cutoff = cutoff_freq / nyquist
         filter_order = 4
