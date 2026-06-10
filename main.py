@@ -82,15 +82,12 @@ if uploaded_file is not None:
         # -----------------------------------------------------------------------------
         # 3.1 Filtro Passa-Baixa de 0.5 Hz na Norma
         # -----------------------------------------------------------------------------
-        cutoff_freq = 1.5           # Frequência de corte em Hz
-        nyquist = fs_target / 2.0   # Frequência de Nyquist (50 Hz)
-        normal_cutoff = cutoff_freq / nyquist  # Frequência normalizada (0.01)
-        filter_order = 4            # Ordem do filtro Butterworth
+        cutoff_freq = 0.5
+        nyquist = fs_target / 2.0
+        normal_cutoff = cutoff_freq / nyquist
+        filter_order = 4
         
-        # Projetar o filtro Butterworth
         b, a = signal.butter(filter_order, normal_cutoff, btype='low', analog=False)
-        
-        # Aplicar filtfilt (filtra nos dois sentidos -> fase zero, sem atraso)
         norm_filtered = signal.filtfilt(b, a, norm)
 
         # Criar DataFrame com os dados processados
@@ -123,6 +120,48 @@ if uploaded_file is not None:
         )
 
         # -----------------------------------------------------------------------------
+        # 4.1 Parâmetros para Detecção de Picos
+        # -----------------------------------------------------------------------------
+        st.markdown("#### 🔍 Parâmetros de Detecção de Picos")
+        st.markdown("Ajuste os parâmetros abaixo para identificar picos significativos na norma da aceleração.")
+        
+        col_p1, col_p2, col_p3 = st.columns(3)
+        
+        with col_p1:
+            # Altura mínima do pico (em m/s²)
+            min_height = st.number_input(
+                "Altura Mínima (m/s²)",
+                min_value=0.0,
+                max_value=float(norm.max()),
+                value=float(norm.mean()),
+                step=0.1,
+                help="Apenas picos acima deste valor serão detectados"
+            )
+        
+        with col_p2:
+            # Distância mínima entre picos (em segundos)
+            min_distance_sec = st.number_input(
+                "Distância Mínima entre Picos (s)",
+                min_value=0.01,
+                max_value=5.0,
+                value=0.5,
+                step=0.1,
+                help="Distância mínima em segundos entre picos consecutivos"
+            )
+            min_distance_samples = int(min_distance_sec * fs_target)
+        
+        with col_p3:
+            # Proeminência mínima (quanto o pico se sobressai em relação aos vales ao redor)
+            min_prominence = st.number_input(
+                "Proeminência Mínima (m/s²)",
+                min_value=0.0,
+                max_value=float(norm.max() - norm.min()),
+                value=1.0,
+                step=0.1,
+                help="Quanto o pico deve se destacar em relação aos vales ao redor"
+            )
+
+        # -----------------------------------------------------------------------------
         # 5. Plotagem dos Dados Completos com a Janela Destacada
         # -----------------------------------------------------------------------------
         st.subheader("Dados Processados Completos")
@@ -135,7 +174,6 @@ if uploaded_file is not None:
             height=400
         )
         
-        # Adiciona um retângulo semi-transparente cobrindo a janela selecionada
         fig_full.add_vrect(
             x0=time_window[0], 
             x1=time_window[1], 
@@ -157,8 +195,23 @@ if uploaded_file is not None:
         mask = (df_processed['Tempo (s)'] >= time_window[0]) & (df_processed['Tempo (s)'] <= time_window[1])
         df_window = df_processed[mask]
 
-        # Métricas da janela selecionada (para a norma original e filtrada)
-        col1, col2, col3, col4 = st.columns(4)
+        # -----------------------------------------------------------------------------
+        # 6.1 Detecção de Picos na Janela Selecionada
+        # -----------------------------------------------------------------------------
+        # Detectar picos na norma original (não filtrada) dentro da janela
+        norm_window = df_window['Norma'].values
+        peaks, properties = signal.find_peaks(
+            norm_window,
+            height=min_height,
+            distance=min_distance_samples,
+            prominence=min_prominence
+        )
+        
+        num_peaks = len(peaks)
+
+        # Métricas da janela selecionada
+        st.markdown("#### 📊 Métricas da Janela Selecionada")
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric("Média da Norma", f"{df_window['Norma'].mean():.4f}")
         with col2:
@@ -167,8 +220,10 @@ if uploaded_file is not None:
             st.metric("Média (Filtrada)", f"{df_window['Norma Filtrada (0.5 Hz)'].mean():.4f}")
         with col4:
             st.metric("Desvio Padrão", f"{df_window['Norma'].std():.4f}")
+        with col5:
+            st.metric("🎯 Número de Picos", f"{num_peaks}")
 
-        # Plotagem da janela com zoom - agora mostrando a norma original E a filtrada
+        # Plotagem da janela com zoom - norma original, filtrada e picos marcados
         fig_window = px.line(
             df_window, 
             x='Tempo (s)', 
@@ -178,21 +233,39 @@ if uploaded_file is not None:
             height=350
         )
         
-        # Ajustar nomes da legenda para ficar mais elegante
         fig_window.for_each_trace(lambda t: t.update(
             name='Norma Original' if t.name == 'Norma' else t.name,
             legendgroup='Norma Original' if t.name == 'Norma Original' else t.legendgroup
         ))
         
-        # Personalizar cores e estilos para distinguir as curvas
         fig_window.update_traces(
             selector=dict(name='Norma Original'),
-            line=dict(color='rgba(31, 119, 180, 0.5)', width=1),  # Azul claro, mais fino
+            line=dict(color='rgba(31, 119, 180, 0.5)', width=1),
         )
         fig_window.update_traces(
             selector=dict(name='Norma Filtrada (0.5 Hz)'),
-            line=dict(color='red', width=2.5),  # Vermelha e mais grossa
+            line=dict(color='red', width=2.5),
         )
+        
+        # Adicionar marcadores nos picos detectados
+        if num_peaks > 0:
+            peak_times = df_window['Tempo (s)'].iloc[peaks].values
+            peak_values = norm_window[peaks]
+            
+            fig_window.add_trace(
+                px.scatter(
+                    x=peak_times,
+                    y=peak_values,
+                    labels={'x': 'Tempo (s)', 'y': 'Aceleração (m/s²)'}
+                ).data[0]
+            )
+            
+            fig_window.data[-1].update(
+                mode='markers',
+                marker=dict(color='green', size=12, symbol='star', line=dict(width=2, color='black')),
+                name='Picos Detectados',
+                showlegend=True
+            )
         
         fig_window.update_layout(
             legend=dict(
@@ -204,9 +277,20 @@ if uploaded_file is not None:
             )
         )
 
-        col1,col2,col3 = st.columns([0.5,1,0.5])
-        with col2:
-            st.plotly_chart(fig_window, use_container_width=True)
+        st.plotly_chart(fig_window, use_container_width=True)
+
+        # -----------------------------------------------------------------------------
+        # 6.2 Tabela de Picos Detectados
+        # -----------------------------------------------------------------------------
+        if num_peaks > 0:
+            with st.expander(f"📋 Ver Detalhes dos {num_peaks} Picos Detectados"):
+                peak_df = pd.DataFrame({
+                    'Índice': peaks,
+                    'Tempo (s)': df_window['Tempo (s)'].iloc[peaks].values,
+                    'Amplitude (m/s²)': norm_window[peaks],
+                    'Proeminência': properties['prominences'] if 'prominences' in properties else [None] * num_peaks
+                })
+                st.dataframe(peak_df, use_container_width=True)
 
         # Opcional: Mostrar a tabela de dados processados da janela selecionada
         with st.expander("Visualizar Tabela de Dados Processados (Janela Selecionada)"):
