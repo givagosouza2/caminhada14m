@@ -40,7 +40,7 @@ if uploaded_file is not None:
         df = df.rename(columns=col_map)
         
         # Verify all required columns are present
-        required_cols = ['time', 'acc_x', 'acc_y', 'acc_z']
+        required_cols = ['Tempo (ms)', 'Acc X (m/s²)', 'Acc Y (m/s²)', 'Acc Z (m/s²)']
         if not all(col in df.columns for col in required_cols):
             st.error(f"Missing required columns. Expected: {list(col_map.keys())}. Found: {list(df.columns)}")
             st.stop()
