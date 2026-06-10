@@ -204,7 +204,9 @@ if uploaded_file is not None:
             )
         )
 
-        st.plotly_chart(fig_window, use_container_width=True)
+        col1,col2,col3 = st.columns(3)
+        with col2:
+            st.plotly_chart(fig_window, use_container_width=True)
 
         # Opcional: Mostrar a tabela de dados processados da janela selecionada
         with st.expander("Visualizar Tabela de Dados Processados (Janela Selecionada)"):
