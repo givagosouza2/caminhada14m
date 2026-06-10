@@ -30,10 +30,10 @@ if uploaded_file is not None:
         
         # Map expected columns (adjust these keys if your headers are slightly different)
         col_map = {
-            'time': 'time',
-            'acceleration x': 'acc_x',
-            'acceleration y': 'acc_y',
-            'acceleration z': 'acc_z'
+            'Tempo (ms)': 'time',
+            'Acc X (m/s²)': 'acc_x',
+            'Acc Y (m/s²)': 'acc_y',
+            'Acc Z (m/s²)': 'acc_z'
         }
         
         # Rename columns to standard names
