@@ -84,7 +84,7 @@ if uploaded_file is not None:
         # -----------------------------------------------------------------------------
         # 3.1 Filtro Passa-Baixa de 0.5 Hz na Norma
         # -----------------------------------------------------------------------------
-        cutoff_freq = 1.5
+        cutoff_freq = 0.5
         nyquist = fs_target / 2.0
         normal_cutoff = cutoff_freq / nyquist
         filter_order = 4
@@ -120,6 +120,12 @@ if uploaded_file is not None:
             step=0.1,
             format="%.2f"
         )
+        
+        # -----------------------------------------------------------------------------
+        # 4.0.1 Duração da Janela de Análise (NOVO)
+        # -----------------------------------------------------------------------------
+        window_duration = time_window[1] - time_window[0]
+        st.info(f"⏱️ **Duração do intervalo de análise:** {window_duration:.2f} segundos")
 
         # -----------------------------------------------------------------------------
         # 4.1 Parâmetros para Detecção de Picos
@@ -340,7 +346,6 @@ if uploaded_file is not None:
             
             with col_s4:
                 st.markdown("**Duração da Janela**")
-                window_duration = time_window[1] - time_window[0]
                 st.metric("Duração", f"{window_duration:.2f} s")
                 st.metric("Taxa de Picos", f"{num_peaks / window_duration:.2f} picos/s")
                 if peak_prominences is not None:
