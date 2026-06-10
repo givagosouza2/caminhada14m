@@ -82,7 +82,7 @@ if uploaded_file is not None:
         # -----------------------------------------------------------------------------
         # 3.1 Filtro Passa-Baixa de 0.5 Hz na Norma
         # -----------------------------------------------------------------------------
-        cutoff_freq = 0.5           # Frequência de corte em Hz
+        cutoff_freq = 1           # Frequência de corte em Hz
         nyquist = fs_target / 2.0   # Frequência de Nyquist (50 Hz)
         normal_cutoff = cutoff_freq / nyquist  # Frequência normalizada (0.01)
         filter_order = 4            # Ordem do filtro Butterworth
